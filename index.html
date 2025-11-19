@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>基本電子回路 — simcir風 学習アプリ</title>
+<style>
+  /* ワイヤーの色を視認性の高い青に設定、太さは3pxを維持 */
+  :root{
+    --panel:#f7f7f7;
+    --accent:#0b75c9;
+    --wire-on:#FFC107; /* ON状態のワイヤー色 (Amber) */
+    --wire-off:#0000FF; 
+    --btn-primary:#4CAF50; 
+    --btn-secondary:#2196F3; 
+    --btn-text:#fff;
+  }
+  body{font-family:Segoe UI,Meiryo,Arial,sans-serif;margin:0;background:#e6e6e6;height:100vh;display:flex;gap:12px;padding:12px}
+  /* layout */
+  .col{background:var(--panel);border:3px solid #222;border-radius:6px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
+  .left{width:160px;display:flex;flex-direction:column;gap:12px}
+  .center{flex:1;display:flex;flex-direction:column;gap:12px}
+  .topbar{height:86px;display:flex;align-items:center;gap:12px;padding:8px;border-bottom:2px solid #bbb}
+  .palette{display:flex;gap:12px}
+  /* パレットの要素はアイコンを内包するためサイズは維持 */
+  .palette .gate-p{width:72px;height:48px;border:2px solid #222;background:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 2px 4px rgba(0,0,0,0.12); position:relative;}
+  .palette .gate-p:active{cursor:grabbing}
+  /* パレット内のSVGのサイズ調整 */
+  .palette .gate-p svg{width:50px; height:30px; position: relative;}
+
+  .canvas-wrap{flex:1;display:flex;flex-direction: column;}
+  .canvas{flex:1;background:#fff;border:2px dashed #bbb;border-radius:6px;position:relative;overflow:hidden}
+  .node{position:absolute;width:84px;height:54px;background:#fff;border:2px solid #222;border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px rgba(0,0,0,0.12);user-select:none; overflow: visible; transition: background 0.1s, border-color 0.1s;}
+  
+  .node .label{pointer-events:none;} 
+  .node svg {pointer-events: none;}
+
+  /* Swicth ON state visual feedback */
+  .node.active {
+    background: #FFEB3B !important; /* Light Yellow background for ON state */
+    border-color: #FFA000 !important; /* Darker border for visibility */
+  }
+
+  /* ポートの変形修正のためCSSを調整 */
+  .port{position:absolute;width:12px;height:12px;background:#222;border-radius:50%;}
+  .port.out{right:-6px;top:50%;transform:translateY(-50%)}
+  .port.in.top{left:-6px;top:20%}
+  .port.in.bottom{left:-6px;top:60%}
+  .port.in.center{left:-6px;top:50%;transform:translateY(-50%)}
+  
+  /* left/right side fixed input/output nodes */
+  .io{width:120px;padding:8px;background:#fff;border:2px solid #222;border-radius:6px}
+  .io .title{font-weight:bold;margin-bottom:8px}
+  
+  /* Z(期待値)のフォントサイズを大きくする */
+  .truth{white-space:pre; font-family: monospace; font-size: 1.4em;} 
+  
+  table{border-collapse:collapse}
+  td,th{padding:6px;border:1px solid #444;text-align:center}
+  /* right column */
+  .right{width:200px;display:flex;flex-direction:column;gap:12px}
+  .expect{padding:8px}
+  /* 出題ボタンのレイアウトを調整 (3列表示に変更し、問題数を増やす) */
+  .btns{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;} 
+
+  /* 入力ボタンのサイズ調整 */
+  .io button{
+    padding: 10px 16px; 
+    font-size: 1.1em; 
+    min-width: 40px; 
+    border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s;
+    background: var(--btn-secondary); color: var(--btn-text); border-color: var(--btn-secondary);
+  }
+  .io button:hover{background: #1976D2;}
+  /* その他の出題ボタン */
+  .btns button:not(#judgeBtn){padding:6px; border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s; background: #FF9800; color: #333; border-color: #FF9800; font-size: 0.85em;}
+  .btns button:not(#judgeBtn):hover{background: #F57C00;}
+  
+  /* 判定セクションのレイアウト調整 */
+  .judge-controls {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  /* 判定ボタンのサイズを大きくする */
+  #judgeBtn{
+    flex: 2;
+    padding: 10px; 
+    font-size: 1.1em; 
+    border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s; background: var(--btn-primary); color: var(--btn-text); border-color: var(--btn-primary); font-weight: bold;
+  }
+  #judgeBtn:hover{background: #388E3C;}
+
+  /* リセットボタンのスタイル */
+  #resetBtn{
+    flex: 1;
+    padding: 10px;
+    font-size: 1.1em;
+    border-radius: 6px;
+    border: 2px solid #222;
+    cursor: pointer;
+    transition: background 0.2s;
+    background: #607D8B; /* Blue Grey */
+    color: var(--btn-text);
+    border-color: #607D8B;
+    font-weight: bold;
+  }
+  #resetBtn:hover{background: #455A64;}
+
+
+  /* 判定結果のフォントサイズを大きくする */
+  .judge{
+    margin-top:12px;
+    font-size: 24px; 
+    padding: 8px 0;
+    text-align: center;
+  }
+  
+  /* 判定結果のクラスも .judge と同じサイズになるように修正 */
+  .ok, .ng{
+    font-size: 24px; 
+    padding: 8px 0;
+    text-align: center;
+    font-weight:bold;
+  }
+  .ok{color:green;}
+  .ng{color:red;}
+
+  /* small */
+  .small{font-size:12px;color:#444}
+  /* 太字強調の修正 */
+  .small b {font-weight: bold; color: #000;} 
+  
+  #curBits{ 
+    font-size: 1.4em; 
+    font-weight: bold;
+    color: var(--accent);
+  }
+  
+  svg.wires{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
+
+  /* 接続先のハイライトスタイル */
+  .port.highlight{
+    outline: 3px solid #ff0000; 
+    box-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
+  }
+</style>
+</head>
+<body>
+  <div class="col left">
+    <div class="io">
+      <div class="title">入力 (X, Y)</div>
+      <div style="display:flex;gap:8px;align-items:center;justify-content:center">
+        <button onclick="setBits('00')">00</button>
+        <button onclick="setBits('01')">01</button>
+        <button onclick="setBits('10')">10</button>
+        <button onclick="setBits('11')">11</button>
+      </div>
+      <div style="margin-top:8px;text-align:center">現在: <span id="curBits">--</span></div>
+    </div>
+
+    <div class="io">
+      <div class="title">真理値表 (入力のみ)</div>
+      <table style="width:100%">
+        <tr><th>X</th><th>Y</th></tr>
+        <tbody id="expectTable">
+        </tbody>
+      </table>
+    </div>
+
+    <div class="small" style="padding-top: 4px;">
+      接続方法：出力ポートを<b>ドラッグ</b> → 入力ポートで<b>ドロップ</b>。<br>
+      切断：入力ポートを<b>クリック</b>。<br>
+      ブロック削除：ブロックを<b>ダブルクリック</b>するか、<b>トップバーへドラッグ</b>。
+    </div>
+    </div>
+
+  <div class="col center">
+    <div class="topbar" id="topbar">
+      <div class="palette" id="palette">
+        <div class="gate-p" draggable="true" data-type="AND" id="paletteAND"></div>
+        <div class="gate-p" draggable="true" data-type="OR" id="paletteOR"></div>
+        <div class="gate-p" draggable="true" data-type="NOT" id="paletteNOT"></div>
+      </div>
+      <div style="margin-left:auto">
+        <div class="small">パレット：ここにドロップでノードを削除</div>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <div class="canvas" id="canvas">
+        <svg class="wires" id="wiresSvg"></svg>
+
+        <div class="node" id="inputX" data-node="inputX" style="left:8px;top:33%">
+          <div class="label">X</div> 
+          <div class="port out" data-port="out" data-node="inputX" title="X out"></div>
+        </div>
+        <div class="node" id="inputY" data-node="inputY" style="left:8px;top:66%">
+          <div class="label">Y</div> 
+          <div class="port out" data-port="out" data-node="inputY" title="Y out"></div>
+        </div>
+
+        <div class="node" id="outputZ" data-node="outputZ" style="right:8px;top:33%">
+          <div class="label">Z (SUM)</div> 
+          <div class="port in center" data-port="in" data-node="outputZ" title="Z in" data-index="0"></div>
+        </div>
+        
+        <div class="node" id="outputC" data-node="outputC" style="right:8px;top:66%">
+          <div class="label">C (CARRY)</div> 
+          <div class="port in center" data-port="in" data-node="outputC" title="C in" data-index="0"></div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col right">
+    <div class="expect">
+      <div class="title">出題 (期待出力)</div>
+      
+      <div class="btns">
+        <button onclick="setExpected('AND')">AND</button>
+        <button onclick="setExpected('OR')">OR</button>
+        <button onclick="setExpected('NAND')">NAND</button>
+        <button onclick="setExpected('NOR')">NOR</button>
+        <button onclick="setExpected('XOR')">XOR</button>
+        <button onclick="setExpected('XNOR')">XNOR</button>
+        <button onclick="setExpected('NOT_X')">X̄</button>
+        <button onclick="setExpected('NOT_Y')">Ȳ</button>
+        <button onclick="setExpected('NOT_X_AND_Y')">X̄・Y</button>
+        <button onclick="setExpected('X_AND_NOT_Y')">X・Ȳ</button>
+        <button onclick="setExpected('NOT_X_OR_Y')">X̄+Y</button>
+        <button onclick="setExpected('X_OR_NOT_Y')">X+Ȳ</button>
+        <button onclick="setExpected('NOT_X_AND_NOT_Y')">X̄・Ȳ</button>
+        <button onclick="setExpected('NOT_X_OR_NOT_Y')">X̄+Ȳ</button>
+        <button onclick="setExpected('HALF_SUM')">半加算器(SUM)</button>
+        <button onclick="setExpected('HALF_CARRY')">半加算器(CARRY)</button>
+      </div>
+      
+      <div style="margin-top: 12px; font-size: 1.1em;">
+        <div class="small" style="font-weight: bold; color:#222;">Z/C (期待値)</div>
+        <pre class="truth" id="expectedTruthTable">--</pre>
+      </div>
+    </div>
+
+    <div class="expect">
+      <div class="judge-controls">
+        <button onclick="judgeCircuit()" id="judgeBtn">出力判定</button>
+        <button onclick="resetJudge()" id="resetBtn">リセット</button>
+      </div>
+      <div class="judge" id="judgeResult">未判定</div>
+    </div>
+  </div>
+
+<script>
+// Data structures
+let nodes = {}; 
+let wires = []; 
+let expect = 'XOR'; 
+let curBits = null; 
+
+let pendingConnection = null; 
+let highlightedPort = null; 
+
+function uid(prefix='n'){return prefix+Math.random().toString(36).slice(2,9)}
+
+setExpected('XOR');
+
+// ----------------- SVG Logic Gate Symbols (変更なし) -----------------
+
+function getGateSvg(type, isPalette = false) {
+    let w = 60; 
+    let h = 40; 
+    let style = isPalette ? '' : 'style="position:absolute; left:12px; top:7px;"'; 
+    let viewBox = `0 0 ${w} ${h}`;
+
+    switch (type) {
+        case 'AND':
+            return `<svg viewBox="${viewBox}" width="${w}" height="${h}" ${style}>
+                <path d="M0 0 L15 0 A20 20 0 0 1 15 40 L0 40 Z" fill="#fff" stroke="#222" stroke-width="2"/>
+                <path d="M15 0 A20 20 0 0 1 15 40" fill="none" stroke="#222" stroke-width="2"/>
+                <line x1="0" y1="10" x2="0" y2="30" stroke="none"/>
+            </svg>`;
+        case 'OR':
+            return `<svg viewBox="${viewBox}" width="${w}" height="${h}" ${style}>
+                <path d="M0 0 Q10 20 0 40 L10 40 Q45 35 60 20 Q45 5 10 0 Z" 
+                      fill="#fff" stroke="#222" stroke-width="2"/>
+            </svg>`;
+        case 'NOT':
+            return `<svg viewBox="0 0 50 40" width="50" height="40" ${isPalette ? '' : 'style="position:absolute; left:17px; top:7px;"'}>
+                <path d="M0 0 L40 20 L0 40 Z" fill="#fff" stroke="#222" stroke-width="2"/>
+                <circle cx="44" cy="20" r="4" fill="#fff" stroke="#222" stroke-width="2"/>
+            </svg>`;
+        default:
+            return `<div class="label">${type}</div>`;
+    }
+}
+
+
+// palette drag & drop, node creation/deletion, wire logic (変更なし)
+
+const palette = document.getElementById('palette');
+palette.addEventListener('dragstart', e=>{
+  const tgt = e.target.closest('.gate-p');
+  if(!tgt) return;
+  e.dataTransfer.setData('text/gate', tgt.dataset.type);
+});
+
+const canvas = document.getElementById('canvas');
+canvas.addEventListener('dragover', e=>e.preventDefault());
+canvas.addEventListener('drop', e=>{
+  e.preventDefault();
+  const type = e.dataTransfer.getData('text/gate');
+  if(!type) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left - 42; 
+  const y = e.clientY - rect.top - 27;
+  createNode(type, x, y);
+});
+
+const topbar = document.getElementById('topbar');
+topbar.addEventListener('dragover', e=>e.preventDefault());
+topbar.addEventListener('drop', e=>{
+  e.preventDefault();
+  const id = e.dataTransfer.getData('text/nodeId');
+  if(id) removeNode(id);
+});
+
+function createNode(type,x=100,y=80){
+  const id = uid('node');
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.dataset.node = id;
+  el.style.left = x+'px'; el.style.top = y+'px';
+  el.innerHTML = getGateSvg(type); 
+  canvas.appendChild(el);
+
+  const portOut = document.createElement('div');
+  portOut.className='port out'; portOut.dataset.port='out'; portOut.dataset.node=id;
+  portOut.addEventListener('mousedown', startWireDrag); 
+  el.appendChild(portOut);
+
+  if(type === 'NOT'){
+    const portIn1 = document.createElement('div');
+    portIn1.className='port in center';
+    portIn1.dataset.port='in'; portIn1.dataset.node=id; portIn1.dataset.index='0';
+    portIn1.addEventListener('click', disconnectWire); 
+    el.appendChild(portIn1);
+    nodes[id] = {id,type,x,y,inputs:[null],dom:el};
+  } else {
+    const portIn1 = document.createElement('div');
+    portIn1.className='port in top';
+    portIn1.dataset.port='in'; portIn1.dataset.node=id; portIn1.dataset.index='0';
+    portIn1.addEventListener('click', disconnectWire); 
+    el.appendChild(portIn1);
+    const portIn2 = document.createElement('div');
+    portIn2.className='port in bottom';
+    portIn2.dataset.port='in'; portIn2.dataset.node=id; portIn2.dataset.index='1';
+    portIn2.addEventListener('click', disconnectWire); 
+    el.appendChild(portIn2);
+    nodes[id] = {id,type,x,y,inputs:[null,null],dom:el};
+  }
+
+  makeNodeDraggable(el);
+  renderWires();
+  updateCircuitVisuals(); 
+}
+
+function removeNode(id){
+  if(!nodes[id]) return; 
+  wires = wires.filter(w=>{
+    if(w.from.node===id || w.to.node===id){
+      if(w.pathElem) w.pathElem.remove();
+      return false;
+    }
+    return true;
+  });
+  const nodeEl = document.querySelector(`[data-node='${id}']`);
+  if(nodeEl) nodeEl.remove();
+  delete nodes[id];
+  renderWires();
+  updateCircuitVisuals(); 
+}
+
+function makeNodeDraggable(el){
+  el.draggable = true; 
+  
+  el.addEventListener('dblclick', e => {
+      e.stopPropagation(); 
+      const id = el.dataset.node;
+      removeNode(id);
+  });
+  
+  el.addEventListener('dragstart', e=>{
+    if(pendingConnection) {e.preventDefault(); return;}
+    e.dataTransfer.setData('text/nodeId', el.dataset.node);
+    const img = new Image(); 
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; 
+    e.dataTransfer.setDragImage(img, 0, 0);
+  });
+  
+  el.addEventListener('mousedown', ev=>{
+    if(ev.target.classList.contains('port')) return; 
+    ev.preventDefault();
+    const id = el.dataset.node;
+    const startX = ev.clientX; const startY = ev.clientY;
+    const oLeft = parseFloat(el.style.left); const oTop = parseFloat(el.style.top);
+    function onmove(e){
+      const nx = oLeft + (e.clientX - startX);
+      const ny = oTop + (e.clientY - startY);
+      el.style.left = nx + 'px'; el.style.top = ny+'px';
+      if(nodes[id]){ nodes[id].x = nx; nodes[id].y = ny; }
+      renderWires();
+    }
+    function onup(){document.removeEventListener('mousemove',onmove);document.removeEventListener('mouseup',onup)}
+    document.addEventListener('mousemove',onmove);document.addEventListener('mouseup',onup);
+  });
+}
+
+function startWireDrag(e){
+  e.stopPropagation(); 
+  if(e.button !== 0) return; 
+
+  const outputPort = e.target;
+  const fromNodeId = outputPort.dataset.node;
+
+  const svg = document.getElementById('wiresSvg');
+  const tempPath = document.createElementNS('http://www.w3.org/2000/svg','path');
+  tempPath.setAttribute('stroke', 'var(--wire-off)');
+  tempPath.setAttribute('stroke-width', '3px');
+  tempPath.setAttribute('fill', 'none');
+  svg.appendChild(tempPath);
+
+  const canvasRect = canvas.getBoundingClientRect();
+  const startCoord = getCenter(outputPort, canvasRect);
+
+  pendingConnection = {
+    from: {node: fromNodeId},
+    startCoord: startCoord,
+    tempPath: tempPath
+  };
+  
+  document.addEventListener('mousemove', dragWireMove);
+  document.addEventListener('mouseup', dropWire);
+  outputPort.style.outline='3px solid rgba(0,150,255,0.6)'; 
+}
+
+function dragWireMove(e){
+  if(!pendingConnection) return;
+  const canvasRect = canvas.getBoundingClientRect();
+  const currentX = e.clientX - canvasRect.left;
+  const currentY = e.clientY - canvasRect.top;
+  const d = `M ${pendingConnection.startCoord.x} ${pendingConnection.startCoord.y} L ${currentX} ${currentY}`;
+  pendingConnection.tempPath.setAttribute('d', d);
+
+  const inputPorts = document.querySelectorAll('.port.in');
+  let closestPort = null;
+  let minDistance = 25; 
+
+  if(highlightedPort) {
+    highlightedPort.classList.remove('highlight');
+    highlightedPort = null;
+  }
+
+  inputPorts.forEach(port => {
+    const portCenter = getCenter(port, canvasRect);
+    const dx = portCenter.x - currentX;
+    const dy = portCenter.y - currentY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestPort = port;
+    }
+  });
+
+  if (closestPort) {
+    closestPort.classList.add('highlight'); 
+    highlightedPort = closestPort;
+  }
+}
+
+function dropWire(e){
+  document.removeEventListener('mousemove', dragWireMove);
+  document.removeEventListener('mouseup', dropWire);
+
+  document.querySelectorAll('.port.out').forEach(p=>p.style.outline='');
+  
+  if(!pendingConnection) return;
+  
+  pendingConnection.tempPath.remove();
+  
+  if (highlightedPort) {
+    const toNodeId = highlightedPort.dataset.node;
+    const toIndex = parseInt(highlightedPort.dataset.index || '0');
+    
+    // Disconnect existing wire to the *same* input port
+    wires = wires.filter(w=>{
+      const same = (w.to.node===toNodeId && w.to.index===toIndex);
+      if(same){ if(w.pathElem) w.pathElem.remove(); }
+      return !same;
+    });
+
+    const wire = {from: pendingConnection.from, to: {node: toNodeId, index: toIndex}};
+    wires.push(wire); 
+    
+    highlightedPort.classList.remove('highlight');
+    highlightedPort = null;
+  }
+  
+  pendingConnection = null;
+  renderWires(); 
+  updateCircuitVisuals(); 
+}
+
+function disconnectWire(e){
+  e.stopPropagation(); 
+  const portEl = e.target;
+  const toNodeId = portEl.dataset.node;
+  const toIndex = parseInt(portEl.dataset.index || '0');
+
+  let removed = false;
+  wires = wires.filter(w => {
+    const isTarget = (w.to.node === toNodeId && w.to.index === toIndex);
+    if (isTarget) {
+      if (w.pathElem) w.pathElem.remove();
+      removed = true;
+      return false;
+    }
+    return true;
+  });
+
+  if (removed) {
+    renderWires(); 
+    updateCircuitVisuals(); 
+  }
+}
+
+
+function renderWires(){
+  const svg = document.getElementById('wiresSvg');
+  Array.from(svg.children).filter(el => el !== pendingConnection?.tempPath).forEach(el => el.remove());
+  
+  wires.forEach(w=>{
+    const fromEl = document.querySelector(`[data-node='${w.from.node}']`);
+    const toEl = document.querySelector(`[data-node='${w.to.node}']`);
+    if(!fromEl || !toEl) return;
+    
+    const fromPort = fromEl.querySelector('.port.out');
+    // Z/Cブロックは両方とも center in port を持つ
+    const toPort = toEl.querySelector(`.port.in[data-index='${w.to.index}']`) || toEl.querySelector('.port.in.center'); 
+    if (!fromPort || !toPort) return;
+
+    const r = canvas.getBoundingClientRect();
+    const p1 = getCenter(fromPort, r); const p2 = getCenter(toPort, r);
+
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    const d = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+    path.setAttribute('d',d);
+    path.setAttribute('stroke', 'var(--wire-off)');
+    path.setAttribute('stroke-width', '3px'); 
+    path.setAttribute('fill','none');
+    svg.appendChild(path);
+    w.pathElem = path; 
+  });
+}
+function getCenter(el, baseRect){
+  const r = el.getBoundingClientRect();
+  return {x: r.left - baseRect.left + r.width/2, y: r.top - baseRect.top + r.height/2};
+}
+
+// ----------------- Visual Update Logic -----------------
+
+function getCircuitState(bits){
+    const val = {}; 
+    val['inputX'] = parseInt(bits[0]); 
+    val['inputY'] = parseInt(bits[1]);
+    
+    const outputMap = {};
+    const cache = {};
+
+    function compute(nodeId){
+      if(cache.hasOwnProperty(nodeId)) return cache[nodeId];
+      if(nodeId==='inputX' || nodeId==='inputY') return cache[nodeId]=val[nodeId];
+      
+      const node = nodes[nodeId];
+      if(!node){return 0}
+      
+      const inVals = [0,0];
+      const maxInputs = node.type==='NOT'? 1: 2;
+      
+      wires.forEach(w=>{
+        if(w.to.node===nodeId && w.to.index < maxInputs){
+          inVals[w.to.index] = compute(w.from.node);
+        }
+      });
+      
+      let out=0; 
+      switch(node.type){
+        case 'AND': out = (inVals[0] & inVals[1]); break;
+        case 'OR': out = (inVals[0] | inVals[1]); break;
+        case 'NOT': out = (inVals[0]?0:1); break;
+        default: out=0;
+      }
+      cache[nodeId]=out;
+      return out;
+    }
+    
+    // Compute custom gates
+    Object.keys(nodes).forEach(id => {
+        outputMap[id] = compute(id);
+    });
+    
+    // Compute Z output
+    let z = 0;
+    wires.forEach(w=>{ 
+        if(w.to.node==='outputZ'){ 
+            z = compute(w.from.node); 
+        }
+    });
+    outputMap['outputZ'] = z;
+
+    // Compute C output
+    let c = 0;
+    wires.forEach(w=>{
+        if(w.to.node==='outputC'){
+            c = compute(w.from.node);
+        }
+    });
+    outputMap['outputC'] = c;
+
+    outputMap['inputX'] = val['inputX'];
+    outputMap['inputY'] = val['inputY'];
+    
+    return outputMap;
+}
+
+function updateCircuitVisuals(){
+    if(!curBits) return; 
+
+    const state = getCircuitState(curBits);
+
+    // 1. Apply active class to all nodes (input, gates, output)
+    const allNodes = [...Object.keys(nodes), 'inputX', 'inputY', 'outputZ', 'outputC'];
+    allNodes.forEach(id => {
+        const nodeEl = document.querySelector(`[data-node='${id}']`);
+        if (!nodeEl) return;
+        
+        const outputValue = state[id] || 0; 
+        nodeEl.classList.toggle('active', outputValue === 1);
+    });
+    
+    // 2. Update wire colors
+    wires.forEach(w => {
+        const path = w.pathElem;
+        if (path) {
+            const fromNodeId = w.from.node;
+            const wireIsOn = state[fromNodeId] === 1;
+            path.setAttribute('stroke', wireIsOn ? 'var(--wire-on)' : 'var(--wire-off)');
+        }
+    });
+}
+
+
+// --- 評価ロジック (judgeCircuit用) ---
+function evaluateFor(bits){
+  const state = getCircuitState(bits);
+  
+  // 判定する出力ブロックを現在の期待出力に応じて切り替える
+  if (expect === 'HALF_CARRY') {
+      return state['outputC'] || 0; // CARRYの場合はCブロックの出力を評価
+  } else {
+      return state['outputZ'] || 0; // それ以外の場合はZブロックの出力を評価
+  }
+}
+
+function setExpected(type){ expect = type; updateExpectTable(); updateExpectedTruthTable(); }
+function updateExpectTable(){
+  const tbody = document.getElementById('expectTable'); tbody.innerHTML='';
+  const combos = ['00','01','10','11'];
+  combos.forEach(b=>{
+    const tr = document.createElement('tr');
+    const x = b[0], y=b[1];
+    const td1=document.createElement('td'); td1.textContent = x;
+    const td2=document.createElement('td'); td2.textContent = y;
+    tr.append(td1,td2); tbody.appendChild(tr);
+  });
+}
+function updateExpectedTruthTable(){
+  const truthEl = document.getElementById('expectedTruthTable');
+  const combos = ['00','01','10','11'];
+  
+  // 出力ブロックの表示をタスクに応じて切り替え
+  const outputLabel = (expect === 'HALF_CARRY') ? 'C' : 'Z';
+  let table = `X | Y | ${outputLabel}\n--|---|---\n`;
+  
+  combos.forEach(b=>{
+    const z = expectedFor(b); // expectedForは期待値を出力する。
+    table += `${b[0]} | ${b[1]} | ${z}\n`;
+  });
+  truthEl.textContent = table;
+}
+
+function expectedFor(bits){ 
+  const x=parseInt(bits[0]), y=parseInt(bits[1]);
+  const notX = x ? 0 : 1;
+  const notY = y ? 0 : 1;
+  
+  switch(expect){
+    case 'AND': return (x & y); 
+    case 'OR': return (x | y); 
+    case 'NAND': return ( (x & y) ? 0 : 1 );
+    case 'NOR': return ( (x|y) ? 0 : 1 );
+    case 'XOR': return ( x ^ y );
+    case 'XNOR': return ( (x ^ y) ? 0 : 1 );
+    case 'NOT_X': return notX; 
+    case 'NOT_Y': return notY; 
+    
+    // 新しい出題
+    case 'NOT_X_AND_Y': return (notX & y); // X̄・Y
+    case 'X_AND_NOT_Y': return (x & notY); // X・Ȳ
+    case 'NOT_X_OR_Y': return (notX | y); // X̄+Y
+    case 'X_OR_NOT_Y': return (x | notY); // X+Ȳ
+    case 'NOT_X_AND_NOT_Y': return (notX & notY); // X̄・Ȳ
+    case 'NOT_X_OR_NOT_Y': return (notX | notY); // X̄+Ȳ
+
+    // 半加算器の切り替え
+    case 'HALF_SUM': return ( x ^ y ); // SUM
+    case 'HALF_CARRY': return ( x & y ); // CARRY
+  }
+  return 0;
+}
+
+function setBits(b){ 
+  curBits = b; 
+  document.getElementById('curBits').textContent=b; 
+  updateCircuitVisuals(); 
+}
+
+function judgeCircuit(){
+  const combos = ['00','01','10','11'];
+  const expected = combos.map(c=>expectedFor(c));
+  
+  const targetNodeId = (expect === 'HALF_CARRY') ? 'outputC' : 'outputZ';
+  const targetOutputBlockName = (expect === 'HALF_CARRY') ? 'C (CARRY)' : 'Z (SUM)';
+  
+  const isConnected = wires.some(w => w.to.node === targetNodeId);
+  
+  const judgeEl = document.getElementById('judgeResult');
+
+  if (!isConnected) {
+      judgeEl.textContent = `× 期待出力ブロック (${targetOutputBlockName}) に接続されていません`;
+      judgeEl.className = 'ng';
+      return;
+  }
+  
+  const outputs = combos.map(c=>evaluateFor(c)); 
+
+  const ok = expected.every((v,i)=>v==outputs[i]);
+  
+  judgeEl.textContent = ok? '〇　正解' : '×　不正解';
+  judgeEl.className = ok? 'ok':'ng';
+  updateCircuitVisuals(); 
+}
+
+function resetJudge() {
+    const judgeEl = document.getElementById('judgeResult');
+    judgeEl.textContent = '未判定';
+    judgeEl.className = 'judge'; // クラスを初期状態に戻す
+}
+
+// ----------------- 初期設定 (変更なし) -----------------
+
+function initializePaletteSymbols() {
+    document.getElementById('paletteAND').innerHTML = getGateSvg('AND', true);
+    document.getElementById('paletteOR').innerHTML = getGateSvg('OR', true);
+    document.getElementById('paletteNOT').innerHTML = getGateSvg('NOT', true);
+}
+initializePaletteSymbols();
+
+
+document.querySelector('#inputX .port.out').addEventListener('mousedown', startWireDrag);
+document.querySelector('#inputY .port.out').addEventListener('mousedown', startWireDrag);
+document.querySelector('#outputZ .port.in').addEventListener('click', disconnectWire); 
+document.querySelector('#outputC .port.in').addEventListener('click', disconnectWire); 
+
+palette.querySelectorAll('.gate-p').forEach(p=>{
+  p.addEventListener('dblclick', e=>{ createNode(p.dataset.type, 200,100); });
+});
+
+</script>
+</body>
+</html>
