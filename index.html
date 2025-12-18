@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>基本電子回路 — simcir風 学習アプリ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
   /* ワイヤーの色を視認性の高い青に設定、太さは3pxを維持 */
   :root{
@@ -31,7 +32,7 @@
   .canvas-wrap{flex:1;display:flex;flex-direction: column;}
   .canvas{flex:1;background:#fff;border:2px dashed #bbb;border-radius:6px;position:relative;overflow:hidden}
   .node{position:absolute;width:84px;height:54px;background:#fff;border:2px solid #222;border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px rgba(0,0,0,0.12);user-select:none; overflow: visible; transition: background 0.1s, border-color 0.1s;}
-  
+   
   .node .label{pointer-events:none;} 
   .node svg {pointer-events: none;}
 
@@ -47,14 +48,14 @@
   .port.in.top{left:-6px;top:20%}
   .port.in.bottom{left:-6px;top:60%}
   .port.in.center{left:-6px;top:50%;transform:translateY(-50%)}
-  
+   
   /* left/right side fixed input/output nodes */
   .io{width:120px;padding:8px;background:#fff;border:2px solid #222;border-radius:6px}
   .io .title{font-weight:bold;margin-bottom:8px}
-  
+   
   /* Z(期待値)のフォントサイズを大きくする */
   .truth{white-space:pre; font-family: monospace; font-size: 1.4em;} 
-  
+   
   table{border-collapse:collapse}
   td,th{padding:6px;border:1px solid #444;text-align:center}
   /* right column */
@@ -75,7 +76,7 @@
   /* その他の出題ボタン */
   .btns button:not(#judgeBtn){padding:6px; border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s; background: #FF9800; color: #333; border-color: #FF9800; font-size: 0.85em;}
   .btns button:not(#judgeBtn):hover{background: #F57C00;}
-  
+   
   /* 判定セクションのレイアウト調整 */
   .judge-controls {
     display: flex;
@@ -108,6 +109,26 @@
   }
   #resetBtn:hover{background: #455A64;}
 
+  /* 保存ボタンのスタイル */
+  #saveBtn {
+    width: 100%;
+    padding: 12px;
+    font-size: 1.1em;
+    border-radius: 6px;
+    border: 2px solid #222;
+    cursor: pointer;
+    transition: background 0.2s;
+    background: #9C27B0; /* Purple */
+    color: var(--btn-text);
+    border-color: #9C27B0;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  #saveBtn:hover { background: #7B1FA2; }
+
 
   /* 判定結果のフォントサイズを大きくする */
   .judge{
@@ -116,7 +137,7 @@
     padding: 8px 0;
     text-align: center;
   }
-  
+   
   /* 判定結果のクラスも .judge と同じサイズになるように修正 */
   .ok, .ng{
     font-size: 24px; 
@@ -131,13 +152,13 @@
   .small{font-size:12px;color:#444}
   /* 太字強調の修正 */
   .small b {font-weight: bold; color: #000;} 
-  
+   
   #curBits{ 
     font-size: 1.4em; 
     font-weight: bold;
     color: var(--accent);
   }
-  
+   
   svg.wires{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 
   /* 接続先のハイライトスタイル */
@@ -228,13 +249,13 @@
         <button onclick="setExpected('XOR')">XOR</button>
         <button onclick="setExpected('XNOR')">XNOR</button>
         <button onclick="setExpected('NOT_X')">X̄</button>
-        <button onclick="setExpected('NOT_Y')">Ȳ</button>
+        <button onclick="setExpected('NOT_Y')">Ȳ</button>
         <button onclick="setExpected('NOT_X_AND_Y')">X̄・Y</button>
-        <button onclick="setExpected('X_AND_NOT_Y')">X・Ȳ</button>
+        <button onclick="setExpected('X_AND_NOT_Y')">X・Ȳ</button>
         <button onclick="setExpected('NOT_X_OR_Y')">X̄+Y</button>
-        <button onclick="setExpected('X_OR_NOT_Y')">X+Ȳ</button>
-        <button onclick="setExpected('NOT_X_AND_NOT_Y')">X̄・Ȳ</button>
-        <button onclick="setExpected('NOT_X_OR_NOT_Y')">X̄+Ȳ</button>
+        <button onclick="setExpected('X_OR_NOT_Y')">X+Ȳ</button>
+        <button onclick="setExpected('NOT_X_AND_NOT_Y')">X̄・Ȳ</button>
+        <button onclick="setExpected('NOT_X_OR_NOT_Y')">X̄+Ȳ</button>
         <button onclick="setExpected('HALF_SUM')">半加算器(SUM)</button>
         <button onclick="setExpected('HALF_CARRY')">半加算器(CARRY)</button>
       </div>
@@ -251,6 +272,12 @@
         <button onclick="resetJudge()" id="resetBtn">リセット</button>
       </div>
       <div class="judge" id="judgeResult">未判定</div>
+      
+      <div style="margin-top: 24px; border-top: 1px solid #ccc; padding-top:16px;">
+        <button onclick="saveCircuitImage()" id="saveBtn">
+            📷 回路図を保存 (PNG)
+        </button>
+      </div>
     </div>
   </div>
 
@@ -386,13 +413,13 @@ function removeNode(id){
 
 function makeNodeDraggable(el){
   el.draggable = true; 
-  
+   
   el.addEventListener('dblclick', e => {
       e.stopPropagation(); 
       const id = el.dataset.node;
       removeNode(id);
   });
-  
+   
   el.addEventListener('dragstart', e=>{
     if(pendingConnection) {e.preventDefault(); return;}
     e.dataTransfer.setData('text/nodeId', el.dataset.node);
@@ -400,7 +427,7 @@ function makeNodeDraggable(el){
     img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'; 
     e.dataTransfer.setDragImage(img, 0, 0);
   });
-  
+   
   el.addEventListener('mousedown', ev=>{
     if(ev.target.classList.contains('port')) return; 
     ev.preventDefault();
@@ -441,7 +468,7 @@ function startWireDrag(e){
     startCoord: startCoord,
     tempPath: tempPath
   };
-  
+   
   document.addEventListener('mousemove', dragWireMove);
   document.addEventListener('mouseup', dropWire);
   outputPort.style.outline='3px solid rgba(0,150,255,0.6)'; 
@@ -487,11 +514,11 @@ function dropWire(e){
   document.removeEventListener('mouseup', dropWire);
 
   document.querySelectorAll('.port.out').forEach(p=>p.style.outline='');
-  
+   
   if(!pendingConnection) return;
-  
+   
   pendingConnection.tempPath.remove();
-  
+   
   if (highlightedPort) {
     const toNodeId = highlightedPort.dataset.node;
     const toIndex = parseInt(highlightedPort.dataset.index || '0');
@@ -509,7 +536,7 @@ function dropWire(e){
     highlightedPort.classList.remove('highlight');
     highlightedPort = null;
   }
-  
+   
   pendingConnection = null;
   renderWires(); 
   updateCircuitVisuals(); 
@@ -542,7 +569,7 @@ function disconnectWire(e){
 function renderWires(){
   const svg = document.getElementById('wiresSvg');
   Array.from(svg.children).filter(el => el !== pendingConnection?.tempPath).forEach(el => el.remove());
-  
+   
   wires.forEach(w=>{
     const fromEl = document.querySelector(`[data-node='${w.from.node}']`);
     const toEl = document.querySelector(`[data-node='${w.to.node}']`);
@@ -667,7 +694,7 @@ function updateCircuitVisuals(){
 // --- 評価ロジック (judgeCircuit用) ---
 function evaluateFor(bits){
   const state = getCircuitState(bits);
-  
+   
   // 判定する出力ブロックを現在の期待出力に応じて切り替える
   if (expect === 'HALF_CARRY') {
       return state['outputC'] || 0; // CARRYの場合はCブロックの出力を評価
@@ -691,11 +718,11 @@ function updateExpectTable(){
 function updateExpectedTruthTable(){
   const truthEl = document.getElementById('expectedTruthTable');
   const combos = ['00','01','10','11'];
-  
+   
   // 出力ブロックの表示をタスクに応じて切り替え
   const outputLabel = (expect === 'HALF_CARRY') ? 'C' : 'Z';
   let table = `X | Y | ${outputLabel}\n--|---|---\n`;
-  
+   
   combos.forEach(b=>{
     const z = expectedFor(b); // expectedForは期待値を出力する。
     table += `${b[0]} | ${b[1]} | ${z}\n`;
@@ -707,7 +734,7 @@ function expectedFor(bits){
   const x=parseInt(bits[0]), y=parseInt(bits[1]);
   const notX = x ? 0 : 1;
   const notY = y ? 0 : 1;
-  
+   
   switch(expect){
     case 'AND': return (x & y); 
     case 'OR': return (x | y); 
@@ -720,11 +747,11 @@ function expectedFor(bits){
     
     // 新しい出題
     case 'NOT_X_AND_Y': return (notX & y); // X̄・Y
-    case 'X_AND_NOT_Y': return (x & notY); // X・Ȳ
+    case 'X_AND_NOT_Y': return (x & notY); // X・Ȳ
     case 'NOT_X_OR_Y': return (notX | y); // X̄+Y
-    case 'X_OR_NOT_Y': return (x | notY); // X+Ȳ
-    case 'NOT_X_AND_NOT_Y': return (notX & notY); // X̄・Ȳ
-    case 'NOT_X_OR_NOT_Y': return (notX | notY); // X̄+Ȳ
+    case 'X_OR_NOT_Y': return (x | notY); // X+Ȳ
+    case 'NOT_X_AND_NOT_Y': return (notX & notY); // X̄・Ȳ
+    case 'NOT_X_OR_NOT_Y': return (notX | notY); // X̄+Ȳ
 
     // 半加算器の切り替え
     case 'HALF_SUM': return ( x ^ y ); // SUM
@@ -742,12 +769,12 @@ function setBits(b){
 function judgeCircuit(){
   const combos = ['00','01','10','11'];
   const expected = combos.map(c=>expectedFor(c));
-  
+   
   const targetNodeId = (expect === 'HALF_CARRY') ? 'outputC' : 'outputZ';
   const targetOutputBlockName = (expect === 'HALF_CARRY') ? 'C (CARRY)' : 'Z (SUM)';
-  
+   
   const isConnected = wires.some(w => w.to.node === targetNodeId);
-  
+   
   const judgeEl = document.getElementById('judgeResult');
 
   if (!isConnected) {
@@ -755,11 +782,11 @@ function judgeCircuit(){
       judgeEl.className = 'ng';
       return;
   }
-  
+   
   const outputs = combos.map(c=>evaluateFor(c)); 
 
   const ok = expected.every((v,i)=>v==outputs[i]);
-  
+   
   judgeEl.textContent = ok? '〇　正解' : '×　不正解';
   judgeEl.className = ok? 'ok':'ng';
   updateCircuitVisuals(); 
@@ -770,6 +797,28 @@ function resetJudge() {
     judgeEl.textContent = '未判定';
     judgeEl.className = 'judge'; // クラスを初期状態に戻す
 }
+
+// ----------------- 画像保存ロジック (新規追加) -----------------
+function saveCircuitImage() {
+    const canvasElement = document.getElementById('canvas');
+    if(!canvasElement) return;
+
+    // html2canvasを使って要素をキャプチャ
+    html2canvas(canvasElement, {
+        backgroundColor: '#ffffff', // 背景を白に指定（透明になるのを防ぐ）
+        scale: 2 // 解像度を上げてきれいに保存
+    }).then(canvas => {
+        // 画像リンクを作成してクリックさせる
+        const link = document.createElement('a');
+        link.download = 'logic_circuit.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }).catch(err => {
+        console.error("保存に失敗しました", err);
+        alert("画像の保存に失敗しました。");
+    });
+}
+
 
 // ----------------- 初期設定 (変更なし) -----------------
 
