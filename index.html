@@ -2,170 +2,104 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>基本電子回路 — simcir風 学習アプリ</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+<title>基本電子回路 — タッチ対応版</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
-  /* ワイヤーの色を視認性の高い青に設定、太さは3pxを維持 */
   :root{
     --panel:#f7f7f7;
     --accent:#0b75c9;
-    --wire-on:#FFC107; /* ON状態のワイヤー色 (Amber) */
+    --wire-on:#FFC107;
     --wire-off:#0000FF; 
     --btn-primary:#4CAF50; 
     --btn-secondary:#2196F3; 
     --btn-text:#fff;
   }
-  body{font-family:Segoe UI,Meiryo,Arial,sans-serif;margin:0;background:#e6e6e6;height:100vh;display:flex;gap:12px;padding:12px}
-  /* layout */
+  /* タッチ操作向上のため touch-action を設定 */
+  body{
+      font-family:Segoe UI,Meiryo,Arial,sans-serif;
+      margin:0;background:#e6e6e6;height:100vh;display:flex;gap:12px;padding:12px;
+      touch-action: none; /* 全体的なスクロールを抑制（アプリっぽくする） */
+      overflow: hidden;   /* 画面外へのスクロールを防ぐ */
+  }
+  
   .col{background:var(--panel);border:3px solid #222;border-radius:6px;padding:12px;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
-  .left{width:160px;display:flex;flex-direction:column;gap:12px}
+  .left{width:160px;display:flex;flex-direction:column;gap:12px; overflow-y: auto;}
   .center{flex:1;display:flex;flex-direction:column;gap:12px}
-  .topbar{height:86px;display:flex;align-items:center;gap:12px;padding:8px;border-bottom:2px solid #bbb}
+  .topbar{height:86px;display:flex;align-items:center;gap:12px;padding:8px;border-bottom:2px solid #bbb; flex-shrink: 0;}
   .palette{display:flex;gap:12px}
-  /* パレットの要素はアイコンを内包するためサイズは維持 */
-  .palette .gate-p{width:72px;height:48px;border:2px solid #222;background:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 2px 4px rgba(0,0,0,0.12); position:relative;}
+  
+  .palette .gate-p{width:72px;height:48px;border:2px solid #222;background:#fff;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:grab;box-shadow:0 2px 4px rgba(0,0,0,0.12); position:relative; touch-action: none;}
   .palette .gate-p:active{cursor:grabbing}
-  /* パレット内のSVGのサイズ調整 */
-  .palette .gate-p svg{width:50px; height:30px; position: relative;}
+  .palette .gate-p svg{width:50px; height:30px; position: relative; pointer-events: none;}
 
-  .canvas-wrap{flex:1;display:flex;flex-direction: column;}
-  .canvas{flex:1;background:#fff;border:2px dashed #bbb;border-radius:6px;position:relative;overflow:hidden}
-  .node{position:absolute;width:84px;height:54px;background:#fff;border:2px solid #222;border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px rgba(0,0,0,0.12);user-select:none; overflow: visible; transition: background 0.1s, border-color 0.1s;}
+  .canvas-wrap{flex:1;display:flex;flex-direction: column; position: relative; overflow: hidden;}
+  .canvas{flex:1;background:#fff;border:2px dashed #bbb;border-radius:6px;position:relative;overflow:hidden; touch-action: none;}
+  
+  .node{position:absolute;width:84px;height:54px;background:#fff;border:2px solid #222;border-radius:6px;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 6px rgba(0,0,0,0.12);user-select:none; overflow: visible; transition: background 0.1s, border-color 0.1s; touch-action: none;}
    
   .node .label{pointer-events:none;} 
   .node svg {pointer-events: none;}
 
-  /* Swicth ON state visual feedback */
-  .node.active {
-    background: #FFEB3B !important; /* Light Yellow background for ON state */
-    border-color: #FFA000 !important; /* Darker border for visibility */
-  }
+  .node.active { background: #FFEB3B !important; border-color: #FFA000 !important; }
 
-  /* ポートの変形修正のためCSSを調整 */
-  .port{position:absolute;width:12px;height:12px;background:#222;border-radius:50%;}
+  /* ポートのタッチ判定を広げるために擬似要素を使っても良いが、今回はサイズそのままで判定ロジックでカバー */
+  .port{position:absolute;width:12px;height:12px;background:#222;border-radius:50%; touch-action: none;}
   .port.out{right:-6px;top:50%;transform:translateY(-50%)}
   .port.in.top{left:-6px;top:20%}
   .port.in.bottom{left:-6px;top:60%}
   .port.in.center{left:-6px;top:50%;transform:translateY(-50%)}
    
-  /* left/right side fixed input/output nodes */
   .io{width:120px;padding:8px;background:#fff;border:2px solid #222;border-radius:6px}
   .io .title{font-weight:bold;margin-bottom:8px}
    
-  /* Z(期待値)のフォントサイズを大きくする */
   .truth{white-space:pre; font-family: monospace; font-size: 1.4em;} 
-   
   table{border-collapse:collapse}
   td,th{padding:6px;border:1px solid #444;text-align:center}
-  /* right column */
-  .right{width:200px;display:flex;flex-direction:column;gap:12px}
+  
+  .right{width:200px;display:flex;flex-direction:column;gap:12px; overflow-y: auto;}
   .expect{padding:8px}
-  /* 出題ボタンのレイアウトを調整 (3列表示に変更し、問題数を増やす) */
   .btns{display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px;} 
 
-  /* 入力ボタンのサイズ調整 */
   .io button{
-    padding: 10px 16px; 
-    font-size: 1.1em; 
-    min-width: 40px; 
+    padding: 10px 16px; font-size: 1.1em; min-width: 40px; 
     border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s;
     background: var(--btn-secondary); color: var(--btn-text); border-color: var(--btn-secondary);
   }
   .io button:hover{background: #1976D2;}
-  /* その他の出題ボタン */
   .btns button:not(#judgeBtn){padding:6px; border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s; background: #FF9800; color: #333; border-color: #FF9800; font-size: 0.85em;}
   .btns button:not(#judgeBtn):hover{background: #F57C00;}
    
-  /* 判定セクションのレイアウト調整 */
-  .judge-controls {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-
-  /* 判定ボタンのサイズを大きくする */
+  .judge-controls { display: flex; gap: 8px; margin-bottom: 8px; }
   #judgeBtn{
-    flex: 2;
-    padding: 10px; 
-    font-size: 1.1em; 
+    flex: 2; padding: 10px; font-size: 1.1em; 
     border-radius:6px;border:2px solid #222;cursor:pointer; transition: background 0.2s; background: var(--btn-primary); color: var(--btn-text); border-color: var(--btn-primary); font-weight: bold;
   }
   #judgeBtn:hover{background: #388E3C;}
-
-  /* リセットボタンのスタイル */
   #resetBtn{
-    flex: 1;
-    padding: 10px;
-    font-size: 1.1em;
-    border-radius: 6px;
-    border: 2px solid #222;
-    cursor: pointer;
-    transition: background 0.2s;
-    background: #607D8B; /* Blue Grey */
-    color: var(--btn-text);
-    border-color: #607D8B;
-    font-weight: bold;
+    flex: 1; padding: 10px; font-size: 1.1em;
+    border-radius: 6px; border: 2px solid #222; cursor: pointer; transition: background 0.2s;
+    background: #607D8B; color: var(--btn-text); border-color: #607D8B; font-weight: bold;
   }
   #resetBtn:hover{background: #455A64;}
 
-  /* 保存ボタンのスタイル */
   #saveBtn {
-    width: 100%;
-    padding: 12px;
-    font-size: 1.1em;
-    border-radius: 6px;
-    border: 2px solid #222;
-    cursor: pointer;
-    transition: background 0.2s;
-    background: #9C27B0; /* Purple */
-    color: var(--btn-text);
-    border-color: #9C27B0;
-    font-weight: bold;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
+    width: 100%; padding: 12px; font-size: 1.1em;
+    border-radius: 6px; border: 2px solid #222; cursor: pointer; transition: background 0.2s;
+    background: #9C27B0; color: var(--btn-text); border-color: #9C27B0; font-weight: bold;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
   }
   #saveBtn:hover { background: #7B1FA2; }
 
+  .judge{ margin-top:12px; font-size: 24px; padding: 8px 0; text-align: center; }
+  .ok, .ng{ font-size: 24px; padding: 8px 0; text-align: center; font-weight:bold; }
+  .ok{color:green;} .ng{color:red;}
 
-  /* 判定結果のフォントサイズを大きくする */
-  .judge{
-    margin-top:12px;
-    font-size: 24px; 
-    padding: 8px 0;
-    text-align: center;
-  }
-   
-  /* 判定結果のクラスも .judge と同じサイズになるように修正 */
-  .ok, .ng{
-    font-size: 24px; 
-    padding: 8px 0;
-    text-align: center;
-    font-weight:bold;
-  }
-  .ok{color:green;}
-  .ng{color:red;}
-
-  /* small */
   .small{font-size:12px;color:#444}
-  /* 太字強調の修正 */
   .small b {font-weight: bold; color: #000;} 
-   
-  #curBits{ 
-    font-size: 1.4em; 
-    font-weight: bold;
-    color: var(--accent);
-  }
-   
+  #curBits{ font-size: 1.4em; font-weight: bold; color: var(--accent); }
   svg.wires{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
-
-  /* 接続先のハイライトスタイル */
-  .port.highlight{
-    outline: 3px solid #ff0000; 
-    box-shadow: 0 0 5px rgba(255, 0, 0, 0.8);
-  }
+  .port.highlight{ outline: 3px solid #ff0000; box-shadow: 0 0 5px rgba(255, 0, 0, 0.8); }
 </style>
 </head>
 <body>
@@ -185,24 +119,23 @@
       <div class="title">真理値表 (入力のみ)</div>
       <table style="width:100%">
         <tr><th>X</th><th>Y</th></tr>
-        <tbody id="expectTable">
-        </tbody>
+        <tbody id="expectTable"></tbody>
       </table>
     </div>
 
     <div class="small" style="padding-top: 4px;">
-      接続方法：出力ポートを<b>ドラッグ</b> → 入力ポートで<b>ドロップ</b>。<br>
-      切断：入力ポートを<b>クリック</b>。<br>
-      ブロック削除：ブロックを<b>ダブルクリック</b>するか、<b>トップバーへドラッグ</b>。
+      接続方法：出力ポートを<b>ドラッグ</b> → 入力ポートで<b>離す</b>。<br>
+      切断：入力ポートを<b>タップ</b>。<br>
+      ブロック削除：ブロックを<b>ダブルタップ</b>するか、<b>トップバーへドラッグ</b>。
     </div>
-    </div>
+  </div>
 
   <div class="col center">
     <div class="topbar" id="topbar">
       <div class="palette" id="palette">
-        <div class="gate-p" draggable="true" data-type="AND" id="paletteAND"></div>
-        <div class="gate-p" draggable="true" data-type="OR" id="paletteOR"></div>
-        <div class="gate-p" draggable="true" data-type="NOT" id="paletteNOT"></div>
+        <div class="gate-p" data-type="AND" id="paletteAND"></div>
+        <div class="gate-p" data-type="OR" id="paletteOR"></div>
+        <div class="gate-p" data-type="NOT" id="paletteNOT"></div>
       </div>
       <div style="margin-left:auto">
         <div class="small">パレット：ここにドロップでノードを削除</div>
@@ -212,7 +145,6 @@
     <div class="canvas-wrap">
       <div class="canvas" id="canvas">
         <svg class="wires" id="wiresSvg"></svg>
-
         <div class="node" id="inputX" data-node="inputX" style="left:8px;top:33%">
           <div class="label">X</div> 
           <div class="port out" data-port="out" data-node="inputX" title="X out"></div>
@@ -221,26 +153,21 @@
           <div class="label">Y</div> 
           <div class="port out" data-port="out" data-node="inputY" title="Y out"></div>
         </div>
-
         <div class="node" id="outputZ" data-node="outputZ" style="right:8px;top:33%">
           <div class="label">Z (SUM)</div> 
           <div class="port in center" data-port="in" data-node="outputZ" title="Z in" data-index="0"></div>
         </div>
-        
         <div class="node" id="outputC" data-node="outputC" style="right:8px;top:66%">
           <div class="label">C (CARRY)</div> 
           <div class="port in center" data-port="in" data-node="outputC" title="C in" data-index="0"></div>
         </div>
-
       </div>
     </div>
-
   </div>
 
   <div class="col right">
     <div class="expect">
       <div class="title">出題 (期待出力)</div>
-      
       <div class="btns">
         <button onclick="setExpected('AND')">AND</button>
         <button onclick="setExpected('OR')">OR</button>
@@ -259,7 +186,6 @@
         <button onclick="setExpected('HALF_SUM')">半加算器(SUM)</button>
         <button onclick="setExpected('HALF_CARRY')">半加算器(CARRY)</button>
       </div>
-      
       <div style="margin-top: 12px; font-size: 1.1em;">
         <div class="small" style="font-weight: bold; color:#222;">Z/C (期待値)</div>
         <pre class="truth" id="expectedTruthTable">--</pre>
@@ -272,11 +198,8 @@
         <button onclick="resetJudge()" id="resetBtn">リセット</button>
       </div>
       <div class="judge" id="judgeResult">未判定</div>
-      
       <div style="margin-top: 24px; border-top: 1px solid #ccc; padding-top:16px;">
-        <button onclick="saveCircuitImage()" id="saveBtn">
-            📷 回路図を保存 (PNG)
-        </button>
+        <button onclick="saveCircuitImage()" id="saveBtn">📷 回路図を保存 (PNG)</button>
       </div>
     </div>
   </div>
@@ -295,14 +218,12 @@ function uid(prefix='n'){return prefix+Math.random().toString(36).slice(2,9)}
 
 setExpected('XOR');
 
-// ----------------- SVG Logic Gate Symbols (変更なし) -----------------
+// ----------------- SVG Logic Gate Symbols -----------------
 
 function getGateSvg(type, isPalette = false) {
-    let w = 60; 
-    let h = 40; 
+    let w = 60; let h = 40; 
     let style = isPalette ? '' : 'style="position:absolute; left:12px; top:7px;"'; 
     let viewBox = `0 0 ${w} ${h}`;
-
     switch (type) {
         case 'AND':
             return `<svg viewBox="${viewBox}" width="${w}" height="${h}" ${style}>
@@ -312,8 +233,7 @@ function getGateSvg(type, isPalette = false) {
             </svg>`;
         case 'OR':
             return `<svg viewBox="${viewBox}" width="${w}" height="${h}" ${style}>
-                <path d="M0 0 Q10 20 0 40 L10 40 Q45 35 60 20 Q45 5 10 0 Z" 
-                      fill="#fff" stroke="#222" stroke-width="2"/>
+                <path d="M0 0 Q10 20 0 40 L10 40 Q45 35 60 20 Q45 5 10 0 Z" fill="#fff" stroke="#222" stroke-width="2"/>
             </svg>`;
         case 'NOT':
             return `<svg viewBox="0 0 50 40" width="50" height="40" ${isPalette ? '' : 'style="position:absolute; left:17px; top:7px;"'}>
@@ -325,17 +245,47 @@ function getGateSvg(type, isPalette = false) {
     }
 }
 
+// ----------------- Touch/Mouse Helper -----------------
+// イベントから座標(X, Y)を取得する共通関数
+function getXY(e) {
+  if(e.changedTouches && e.changedTouches.length > 0) {
+    return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
 
-// palette drag & drop, node creation/deletion, wire logic (変更なし)
-
+// ----------------- Palette Logic (Touch & Mouse) -----------------
 const palette = document.getElementById('palette');
-palette.addEventListener('dragstart', e=>{
-  const tgt = e.target.closest('.gate-p');
-  if(!tgt) return;
-  e.dataTransfer.setData('text/gate', tgt.dataset.type);
+const canvas = document.getElementById('canvas');
+
+// パレットアイテムにイベント登録
+palette.querySelectorAll('.gate-p').forEach(p => {
+  // マウス用 (HTML5 DnD) - PCでの互換性維持
+  p.draggable = true;
+  p.addEventListener('dragstart', e => {
+    e.dataTransfer.setData('text/gate', p.dataset.type);
+  });
+
+  // タッチ用 (Custom Logic) - iPad/Chromebook対応
+  p.addEventListener('touchstart', e => {
+    e.preventDefault(); // スクロール防止
+    const type = p.dataset.type;
+    const rect = canvas.getBoundingClientRect();
+    const pos = getXY(e);
+    
+    // キャンバス内の初期位置（指の下に来るように計算）
+    // 補正値: パレットの相対位置など考慮せず、単純にキャンバス左上基準で配置
+    const x = pos.x - rect.left - 42; 
+    const y = pos.y - rect.top - 27;
+
+    const newNode = createNode(type, x, y);
+    
+    // 生成した直後にドラッグを開始させる
+    startNodeDragDirectly(newNode, e);
+  }, {passive: false});
 });
 
-const canvas = document.getElementById('canvas');
+// Canvas Drop (Mouse)
 canvas.addEventListener('dragover', e=>e.preventDefault());
 canvas.addEventListener('drop', e=>{
   e.preventDefault();
@@ -347,6 +297,7 @@ canvas.addEventListener('drop', e=>{
   createNode(type, x, y);
 });
 
+// Node Deletion Area (Topbar)
 const topbar = document.getElementById('topbar');
 topbar.addEventListener('dragover', e=>e.preventDefault());
 topbar.addEventListener('drop', e=>{
@@ -354,6 +305,8 @@ topbar.addEventListener('drop', e=>{
   const id = e.dataTransfer.getData('text/nodeId');
   if(id) removeNode(id);
 });
+
+// ----------------- Node Creation & Logic -----------------
 
 function createNode(type,x=100,y=80){
   const id = uid('node');
@@ -364,28 +317,23 @@ function createNode(type,x=100,y=80){
   el.innerHTML = getGateSvg(type); 
   canvas.appendChild(el);
 
+  // Output port
   const portOut = document.createElement('div');
   portOut.className='port out'; portOut.dataset.port='out'; portOut.dataset.node=id;
+  // マウス・タッチ両方のリスナーを登録
   portOut.addEventListener('mousedown', startWireDrag); 
+  portOut.addEventListener('touchstart', startWireDrag, {passive: false});
   el.appendChild(portOut);
 
+  // Input ports
   if(type === 'NOT'){
-    const portIn1 = document.createElement('div');
-    portIn1.className='port in center';
-    portIn1.dataset.port='in'; portIn1.dataset.node=id; portIn1.dataset.index='0';
-    portIn1.addEventListener('click', disconnectWire); 
+    const portIn1 = createInPort(id, 'center', '0');
     el.appendChild(portIn1);
     nodes[id] = {id,type,x,y,inputs:[null],dom:el};
   } else {
-    const portIn1 = document.createElement('div');
-    portIn1.className='port in top';
-    portIn1.dataset.port='in'; portIn1.dataset.node=id; portIn1.dataset.index='0';
-    portIn1.addEventListener('click', disconnectWire); 
+    const portIn1 = createInPort(id, 'top', '0');
     el.appendChild(portIn1);
-    const portIn2 = document.createElement('div');
-    portIn2.className='port in bottom';
-    portIn2.dataset.port='in'; portIn2.dataset.node=id; portIn2.dataset.index='1';
-    portIn2.addEventListener('click', disconnectWire); 
+    const portIn2 = createInPort(id, 'bottom', '1');
     el.appendChild(portIn2);
     nodes[id] = {id,type,x,y,inputs:[null,null],dom:el};
   }
@@ -393,6 +341,20 @@ function createNode(type,x=100,y=80){
   makeNodeDraggable(el);
   renderWires();
   updateCircuitVisuals(); 
+  return el; // 生成したDOMを返す
+}
+
+function createInPort(nodeId, posClass, index){
+  const p = document.createElement('div');
+  p.className = `port in ${posClass}`;
+  p.dataset.port = 'in';
+  p.dataset.node = nodeId;
+  p.dataset.index = index;
+  // Click/Tap to disconnect
+  p.addEventListener('click', disconnectWire);
+  // Touch specific for disconnect (tap behavior)
+  p.addEventListener('touchend', disconnectWire);
+  return p;
 }
 
 function removeNode(id){
@@ -411,15 +373,28 @@ function removeNode(id){
   updateCircuitVisuals(); 
 }
 
+// ----------------- Node Dragging (Unified Mouse & Touch) -----------------
+
 function makeNodeDraggable(el){
-  el.draggable = true; 
-   
+  el.draggable = true; // For Mouse Drag to trash
+  
+  // Double Click / Double Tap to delete
+  let lastTap = 0;
+  el.addEventListener('touchend', e=>{
+      const currentTime = new Date().getTime();
+      const tapLength = currentTime - lastTap;
+      if (tapLength < 500 && tapLength > 0) {
+          e.preventDefault();
+          removeNode(el.dataset.node);
+      }
+      lastTap = currentTime;
+  });
   el.addEventListener('dblclick', e => {
       e.stopPropagation(); 
-      const id = el.dataset.node;
-      removeNode(id);
+      removeNode(el.dataset.node);
   });
    
+  // HTML5 Drag Start (Mouse only, for Trash bin)
   el.addEventListener('dragstart', e=>{
     if(pendingConnection) {e.preventDefault(); return;}
     e.dataTransfer.setData('text/nodeId', el.dataset.node);
@@ -428,27 +403,77 @@ function makeNodeDraggable(el){
     e.dataTransfer.setDragImage(img, 0, 0);
   });
    
-  el.addEventListener('mousedown', ev=>{
-    if(ev.target.classList.contains('port')) return; 
-    ev.preventDefault();
-    const id = el.dataset.node;
-    const startX = ev.clientX; const startY = ev.clientY;
-    const oLeft = parseFloat(el.style.left); const oTop = parseFloat(el.style.top);
-    function onmove(e){
-      const nx = oLeft + (e.clientX - startX);
-      const ny = oTop + (e.clientY - startY);
-      el.style.left = nx + 'px'; el.style.top = ny+'px';
-      if(nodes[id]){ nodes[id].x = nx; nodes[id].y = ny; }
-      renderWires();
-    }
-    function onup(){document.removeEventListener('mousemove',onmove);document.removeEventListener('mouseup',onup)}
-    document.addEventListener('mousemove',onmove);document.addEventListener('mouseup',onup);
-  });
+  // Unified Move Logic (Mouse Down & Touch Start)
+  const startMove = (e) => {
+    if(e.target.classList.contains('port')) return; 
+    // HTML5 Dragが発火しないように標準動作を防ぐ（タッチの場合）
+    if(e.type === 'touchstart') e.preventDefault();
+
+    startNodeDragDirectly(el, e);
+  };
+
+  el.addEventListener('mousedown', startMove);
+  el.addEventListener('touchstart', startMove, {passive: false});
 }
 
+// ノードドラッグ処理の実体
+function startNodeDragDirectly(el, e) {
+    const id = el.dataset.node;
+    const pos = getXY(e);
+    const startX = pos.x; 
+    const startY = pos.y;
+    const oLeft = parseFloat(el.style.left); 
+    const oTop = parseFloat(el.style.top);
+    
+    // トップバー(ゴミ箱)エリアの判定用
+    const topbarRect = topbar.getBoundingClientRect();
+
+    function onmove(ev){
+      if(ev.type === 'touchmove') ev.preventDefault(); // Stop scroll
+      const curr = getXY(ev);
+      const nx = oLeft + (curr.x - startX);
+      const ny = oTop + (curr.y - startY);
+      el.style.left = nx + 'px'; el.style.top = ny+'px';
+      
+      if(nodes[id]){ nodes[id].x = nx; nodes[id].y = ny; }
+      renderWires();
+
+      // Simple Trash Highlight visual
+      if(curr.y < topbarRect.bottom) {
+         topbar.style.backgroundColor = '#ffe0e0';
+      } else {
+         topbar.style.backgroundColor = '';
+      }
+    }
+    
+    function onup(ev){
+        document.removeEventListener('mousemove',onmove);
+        document.removeEventListener('mouseup',onup);
+        document.removeEventListener('touchmove',onmove);
+        document.removeEventListener('touchend',onup);
+        topbar.style.backgroundColor = '';
+
+        // Drop in Trash?
+        const endPos = getXY(ev);
+        if(endPos.y < topbarRect.bottom) {
+            removeNode(id);
+        }
+    }
+    
+    document.addEventListener('mousemove',onmove);
+    document.addEventListener('mouseup',onup);
+    document.addEventListener('touchmove',onmove, {passive: false});
+    document.addEventListener('touchend',onup);
+}
+
+
+// ----------------- Wire Creation (Unified Mouse & Touch) -----------------
+
 function startWireDrag(e){
+  // ポートから開始
   e.stopPropagation(); 
-  if(e.button !== 0) return; 
+  if(e.type === 'mousedown' && e.button !== 0) return; 
+  if(e.type === 'touchstart') e.preventDefault(); // Stop scroll
 
   const outputPort = e.target;
   const fromNodeId = outputPort.dataset.node;
@@ -471,20 +496,28 @@ function startWireDrag(e){
    
   document.addEventListener('mousemove', dragWireMove);
   document.addEventListener('mouseup', dropWire);
+  document.addEventListener('touchmove', dragWireMove, {passive: false});
+  document.addEventListener('touchend', dropWire);
+  
   outputPort.style.outline='3px solid rgba(0,150,255,0.6)'; 
 }
 
 function dragWireMove(e){
   if(!pendingConnection) return;
+  if(e.type === 'touchmove') e.preventDefault(); 
+
   const canvasRect = canvas.getBoundingClientRect();
-  const currentX = e.clientX - canvasRect.left;
-  const currentY = e.clientY - canvasRect.top;
+  const pos = getXY(e);
+  const currentX = pos.x - canvasRect.left;
+  const currentY = pos.y - canvasRect.top;
+  
   const d = `M ${pendingConnection.startCoord.x} ${pendingConnection.startCoord.y} L ${currentX} ${currentY}`;
   pendingConnection.tempPath.setAttribute('d', d);
 
+  // Hit testing logic
   const inputPorts = document.querySelectorAll('.port.in');
   let closestPort = null;
-  let minDistance = 25; 
+  let minDistance = 40; // 指だと隠れるので判定範囲を広げる (25->40)
 
   if(highlightedPort) {
     highlightedPort.classList.remove('highlight');
@@ -512,13 +545,15 @@ function dragWireMove(e){
 function dropWire(e){
   document.removeEventListener('mousemove', dragWireMove);
   document.removeEventListener('mouseup', dropWire);
+  document.removeEventListener('touchmove', dragWireMove);
+  document.removeEventListener('touchend', dropWire);
 
   document.querySelectorAll('.port.out').forEach(p=>p.style.outline='');
    
   if(!pendingConnection) return;
-   
   pendingConnection.tempPath.remove();
    
+  // Touchの場合、highlightedPortが直前のmoveでセットされているはず
   if (highlightedPort) {
     const toNodeId = highlightedPort.dataset.node;
     const toIndex = parseInt(highlightedPort.dataset.index || '0');
@@ -543,7 +578,9 @@ function dropWire(e){
 }
 
 function disconnectWire(e){
-  e.stopPropagation(); 
+  e.stopPropagation();
+  e.preventDefault(); // Prevent double fire (touch+click)
+  
   const portEl = e.target;
   const toNodeId = portEl.dataset.node;
   const toIndex = parseInt(portEl.dataset.index || '0');
@@ -565,6 +602,7 @@ function disconnectWire(e){
   }
 }
 
+// ----------------- Rendering & Updates -----------------
 
 function renderWires(){
   const svg = document.getElementById('wiresSvg');
@@ -576,7 +614,6 @@ function renderWires(){
     if(!fromEl || !toEl) return;
     
     const fromPort = fromEl.querySelector('.port.out');
-    // Z/Cブロックは両方とも center in port を持つ
     const toPort = toEl.querySelector(`.port.in[data-index='${w.to.index}']`) || toEl.querySelector('.port.in.center'); 
     if (!fromPort || !toPort) return;
 
@@ -597,8 +634,6 @@ function getCenter(el, baseRect){
   const r = el.getBoundingClientRect();
   return {x: r.left - baseRect.left + r.width/2, y: r.top - baseRect.top + r.height/2};
 }
-
-// ----------------- Visual Update Logic -----------------
 
 function getCircuitState(bits){
     const val = {}; 
@@ -635,51 +670,26 @@ function getCircuitState(bits){
       return out;
     }
     
-    // Compute custom gates
-    Object.keys(nodes).forEach(id => {
-        outputMap[id] = compute(id);
-    });
-    
-    // Compute Z output
-    let z = 0;
-    wires.forEach(w=>{ 
-        if(w.to.node==='outputZ'){ 
-            z = compute(w.from.node); 
-        }
-    });
+    Object.keys(nodes).forEach(id => { outputMap[id] = compute(id); });
+    let z = 0; wires.forEach(w=>{ if(w.to.node==='outputZ'){ z = compute(w.from.node); } });
     outputMap['outputZ'] = z;
-
-    // Compute C output
-    let c = 0;
-    wires.forEach(w=>{
-        if(w.to.node==='outputC'){
-            c = compute(w.from.node);
-        }
-    });
+    let c = 0; wires.forEach(w=>{ if(w.to.node==='outputC'){ c = compute(w.from.node); } });
     outputMap['outputC'] = c;
-
     outputMap['inputX'] = val['inputX'];
     outputMap['inputY'] = val['inputY'];
-    
     return outputMap;
 }
 
 function updateCircuitVisuals(){
     if(!curBits) return; 
-
     const state = getCircuitState(curBits);
-
-    // 1. Apply active class to all nodes (input, gates, output)
     const allNodes = [...Object.keys(nodes), 'inputX', 'inputY', 'outputZ', 'outputC'];
     allNodes.forEach(id => {
         const nodeEl = document.querySelector(`[data-node='${id}']`);
         if (!nodeEl) return;
-        
         const outputValue = state[id] || 0; 
         nodeEl.classList.toggle('active', outputValue === 1);
     });
-    
-    // 2. Update wire colors
     wires.forEach(w => {
         const path = w.pathElem;
         if (path) {
@@ -690,51 +700,33 @@ function updateCircuitVisuals(){
     });
 }
 
-
-// --- 評価ロジック (judgeCircuit用) ---
 function evaluateFor(bits){
   const state = getCircuitState(bits);
-   
-  // 判定する出力ブロックを現在の期待出力に応じて切り替える
-  if (expect === 'HALF_CARRY') {
-      return state['outputC'] || 0; // CARRYの場合はCブロックの出力を評価
-  } else {
-      return state['outputZ'] || 0; // それ以外の場合はZブロックの出力を評価
-  }
+  if (expect === 'HALF_CARRY') return state['outputC'] || 0;
+  else return state['outputZ'] || 0;
 }
-
 function setExpected(type){ expect = type; updateExpectTable(); updateExpectedTruthTable(); }
 function updateExpectTable(){
   const tbody = document.getElementById('expectTable'); tbody.innerHTML='';
-  const combos = ['00','01','10','11'];
-  combos.forEach(b=>{
+  ['00','01','10','11'].forEach(b=>{
     const tr = document.createElement('tr');
-    const x = b[0], y=b[1];
-    const td1=document.createElement('td'); td1.textContent = x;
-    const td2=document.createElement('td'); td2.textContent = y;
-    tr.append(td1,td2); tbody.appendChild(tr);
+    tr.innerHTML = `<td>${b[0]}</td><td>${b[1]}</td>`;
+    tbody.appendChild(tr);
   });
 }
 function updateExpectedTruthTable(){
   const truthEl = document.getElementById('expectedTruthTable');
-  const combos = ['00','01','10','11'];
-   
-  // 出力ブロックの表示をタスクに応じて切り替え
   const outputLabel = (expect === 'HALF_CARRY') ? 'C' : 'Z';
   let table = `X | Y | ${outputLabel}\n--|---|---\n`;
-   
-  combos.forEach(b=>{
-    const z = expectedFor(b); // expectedForは期待値を出力する。
-    table += `${b[0]} | ${b[1]} | ${z}\n`;
+  ['00','01','10','11'].forEach(b=>{
+    table += `${b[0]} | ${b[1]} | ${expectedFor(b)}\n`;
   });
   truthEl.textContent = table;
 }
-
 function expectedFor(bits){ 
   const x=parseInt(bits[0]), y=parseInt(bits[1]);
   const notX = x ? 0 : 1;
   const notY = y ? 0 : 1;
-   
   switch(expect){
     case 'AND': return (x & y); 
     case 'OR': return (x | y); 
@@ -744,84 +736,53 @@ function expectedFor(bits){
     case 'XNOR': return ( (x ^ y) ? 0 : 1 );
     case 'NOT_X': return notX; 
     case 'NOT_Y': return notY; 
-    
-    // 新しい出題
-    case 'NOT_X_AND_Y': return (notX & y); // X̄・Y
-    case 'X_AND_NOT_Y': return (x & notY); // X・Ȳ
-    case 'NOT_X_OR_Y': return (notX | y); // X̄+Y
-    case 'X_OR_NOT_Y': return (x | notY); // X+Ȳ
-    case 'NOT_X_AND_NOT_Y': return (notX & notY); // X̄・Ȳ
-    case 'NOT_X_OR_NOT_Y': return (notX | notY); // X̄+Ȳ
-
-    // 半加算器の切り替え
-    case 'HALF_SUM': return ( x ^ y ); // SUM
-    case 'HALF_CARRY': return ( x & y ); // CARRY
+    case 'NOT_X_AND_Y': return (notX & y);
+    case 'X_AND_NOT_Y': return (x & notY);
+    case 'NOT_X_OR_Y': return (notX | y);
+    case 'X_OR_NOT_Y': return (x | notY);
+    case 'NOT_X_AND_NOT_Y': return (notX & notY);
+    case 'NOT_X_OR_NOT_Y': return (notX | notY);
+    case 'HALF_SUM': return ( x ^ y );
+    case 'HALF_CARRY': return ( x & y );
   }
   return 0;
 }
-
-function setBits(b){ 
-  curBits = b; 
-  document.getElementById('curBits').textContent=b; 
-  updateCircuitVisuals(); 
-}
-
+function setBits(b){ curBits = b; document.getElementById('curBits').textContent=b; updateCircuitVisuals(); }
 function judgeCircuit(){
   const combos = ['00','01','10','11'];
   const expected = combos.map(c=>expectedFor(c));
-   
   const targetNodeId = (expect === 'HALF_CARRY') ? 'outputC' : 'outputZ';
   const targetOutputBlockName = (expect === 'HALF_CARRY') ? 'C (CARRY)' : 'Z (SUM)';
-   
   const isConnected = wires.some(w => w.to.node === targetNodeId);
-   
   const judgeEl = document.getElementById('judgeResult');
-
   if (!isConnected) {
       judgeEl.textContent = `× 期待出力ブロック (${targetOutputBlockName}) に接続されていません`;
       judgeEl.className = 'ng';
       return;
   }
-   
   const outputs = combos.map(c=>evaluateFor(c)); 
-
   const ok = expected.every((v,i)=>v==outputs[i]);
-   
   judgeEl.textContent = ok? '〇　正解' : '×　不正解';
   judgeEl.className = ok? 'ok':'ng';
   updateCircuitVisuals(); 
 }
-
 function resetJudge() {
     const judgeEl = document.getElementById('judgeResult');
     judgeEl.textContent = '未判定';
-    judgeEl.className = 'judge'; // クラスを初期状態に戻す
+    judgeEl.className = 'judge';
 }
-
-// ----------------- 画像保存ロジック (新規追加) -----------------
 function saveCircuitImage() {
     const canvasElement = document.getElementById('canvas');
     if(!canvasElement) return;
-
-    // html2canvasを使って要素をキャプチャ
-    html2canvas(canvasElement, {
-        backgroundColor: '#ffffff', // 背景を白に指定（透明になるのを防ぐ）
-        scale: 2 // 解像度を上げてきれいに保存
-    }).then(canvas => {
-        // 画像リンクを作成してクリックさせる
+    html2canvas(canvasElement, { backgroundColor: '#ffffff', scale: 2 }).then(canvas => {
         const link = document.createElement('a');
         link.download = 'logic_circuit.png';
         link.href = canvas.toDataURL('image/png');
         link.click();
-    }).catch(err => {
-        console.error("保存に失敗しました", err);
-        alert("画像の保存に失敗しました。");
-    });
+    }).catch(err => { alert("画像の保存に失敗しました。"); });
 }
 
-
-// ----------------- 初期設定 (変更なし) -----------------
-
+// ----------------- Initialize -----------------
 function initializePaletteSymbols() {
     document.getElementById('paletteAND').innerHTML = getGateSvg('AND', true);
     document.getElementById('paletteOR').innerHTML = getGateSvg('OR', true);
@@ -829,16 +790,29 @@ function initializePaletteSymbols() {
 }
 initializePaletteSymbols();
 
+// 固定ノードへのイベントリスナーもタッチ対応させる
+const fixedPorts = [
+    document.querySelector('#inputX .port.out'),
+    document.querySelector('#inputY .port.out')
+];
+fixedPorts.forEach(p => {
+    p.addEventListener('mousedown', startWireDrag);
+    p.addEventListener('touchstart', startWireDrag, {passive: false});
+});
 
-document.querySelector('#inputX .port.out').addEventListener('mousedown', startWireDrag);
-document.querySelector('#inputY .port.out').addEventListener('mousedown', startWireDrag);
-document.querySelector('#outputZ .port.in').addEventListener('click', disconnectWire); 
-document.querySelector('#outputC .port.in').addEventListener('click', disconnectWire); 
+const fixedInPorts = [
+    document.querySelector('#outputZ .port.in'),
+    document.querySelector('#outputC .port.in')
+];
+fixedInPorts.forEach(p => {
+    p.addEventListener('click', disconnectWire);
+    p.addEventListener('touchend', disconnectWire);
+});
 
+// パレットのダブルクリックイベント（PC用）は維持
 palette.querySelectorAll('.gate-p').forEach(p=>{
   p.addEventListener('dblclick', e=>{ createNode(p.dataset.type, 200,100); });
 });
-
 </script>
 </body>
 </html>
